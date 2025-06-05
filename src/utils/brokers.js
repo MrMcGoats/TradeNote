@@ -1036,6 +1036,94 @@ export async function useNinjaTrader(param) {
             let papaParse = Papa.parse(param, { header: true })
             //we need to recreate the JSON with proper date format + we simplify
             //console.log("papaparse " + JSON.stringify(papaParse.data))
+            
+            // Track the current position for each account/symbol combination
+            // We will use this for the "Entry/Exit" orders
+            let currentPosition = {}
+            let newData = {data: []}
+            papaParse.data.forEach(element => {
+                if (!element.Instrument) return
+
+                // Initialize position tracking
+                if (!currentPosition[element.Account]) {
+                    currentPosition[element.Account] = {}
+                }
+                if (!currentPosition[element.Account][element.Instrument]) {
+                    currentPosition[element.Account][element.Instrument] = 0
+                }
+
+                let newElement = { ...element }
+
+                if (element["E/X"] === "Entry/Exit") {
+                    // Parse position
+                    let positionParts = element.Position ? element.Position.split(" ") : ["0", "L"]
+                    let qty = Number(positionParts[0]) || 0
+                    let side = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0
+                    let newPosition = qty * side;
+                    let lastPosition = currentPosition[element.Account][element.Instrument]
+
+                    // Calculate quantities for closing and opening positions
+                    let closeQty = 0
+                    let openQty = 0
+
+                    if (lastPosition > 0 && newPosition >= 0) {
+                        // Long to long or flat
+                        closeQty = Math.min(lastPosition, newPosition)
+                        openQty = newPosition - closeQty
+                    } else if (lastPosition < 0 && newPosition <= 0) {
+                        // Short to short or flat
+                        closeQty = Math.min(Math.abs(lastPosition), Math.abs(newPosition))
+                        openQty = Math.abs(newPosition) - closeQty
+                    } else if (lastPosition > 0 && newPosition < 0) {
+                        // Long to short
+                        closeQty = lastPosition
+                        openQty = Math.abs(newPosition)
+                    } else if (lastPosition < 0 && newPosition > 0) {
+                        // Short to long
+                        closeQty = Math.abs(lastPosition)
+                        openQty = newPosition
+                    } else if (lastPosition === 0) {
+                        // Flat to any position
+                        openQty = Math.abs(newPosition)
+                    }
+
+                    let totalQty = Number(element.Quantity) || 0
+                    let perUnitCommission = totalQty > 0 ? Number(element.Commission.split("$")[1]) / totalQty : 0
+
+                    // Create Exit transaction if needed
+                    if (closeQty > 0) {
+                        let exitElement = { ...newElement }
+                        exitElement.Quantity = closeQty.toString()
+                        exitElement.Commission = "$" + (closeQty * perUnitCommission).toFixed(2)
+                        exitElement["E/X"] = "Exit"
+                        newData.data.push(exitElement)
+                    }
+
+                    // Create Entry transaction if needed
+                    if (openQty > 0) {
+                        newElement.Quantity = openQty.toString()
+                        newElement.Commission = "$" + (openQty * perUnitCommission).toFixed(2)
+                        newElement["E/X"] = "Entry"
+                        newData.data.push(newElement)
+                    } else if (closeQty === 0) {
+                        // If no closing, just push the original as Entry
+                        newElement["E/X"] = "Entry"
+                        newData.data.push(newElement)
+                    }
+
+                    // Update position
+                    currentPosition[element.Account][element.Instrument] = newPosition
+                } else {
+                    // Non-Entry/Exit orders
+                    let positionParts = element.Position ? element.Position.split(" ") : ["0", "L"]
+                    let qty = Number(positionParts[0]) || 0
+                    let side = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0
+                    currentPosition[element.Account][element.Instrument] = qty * side
+                    newData.data.push(newElement)
+                }
+            })
+
+            papaParse = newData
 
             papaParse.data.forEach(element => {
                 if (element.Instrument) {
@@ -1043,7 +1131,8 @@ export async function useNinjaTrader(param) {
                     let temp = {}
                     temp.Account = element.Account
                     //console.log("element.TradeDate. " + element.TradeDate)
-                    let date = element.Time.split(" ")[0]
+                    let dateArr = element.Time.split(" ")[0].split('-')
+                    let date = dateArr[1] + '/' + dateArr[2] + '/' + dateArr[0]
 
                     temp["T/D"] = date
                     temp["S/D"] = date
@@ -1051,20 +1140,20 @@ export async function useNinjaTrader(param) {
                     temp.Currency = "USD"
                     temp.Type = "future"
 
-                    let qtyNumber = Number(element.Quantity)
+                    let qtyNumber = element.Quantity
                     temp.Qty = qtyNumber.toString()
 
 
                     if (element.Action == "Buy" && element["E/X"] == "Entry") {
                         temp.Side = "B"
                     }
-                    if (element.Action == "Buy" && element["E/X"] == "Exit") {
+                    else if (element.Action == "Buy" && element["E/X"] == "Exit") {
                         temp.Side = "BC"
                     }
-                    if (element.Action == "Sell" && element["E/X"] == "Exit") {
+                    else if (element.Action == "Sell" && element["E/X"] == "Exit") {
                         temp.Side = "S"
                     }
-                    if (element.Action == "Sell" && element["E/X"] == "Entry") {
+                    else if (element.Action == "Sell" && element["E/X"] == "Entry") {
                         temp.Side = "SS"
                     }
 
@@ -1078,7 +1167,7 @@ export async function useNinjaTrader(param) {
                     //console.log(" exect time "+temp["Exec Time"])
                     //temp["Exec Time"] = dayjs(element.Time, "hh:mm:ss A").format("HH:mm:ss")
 
-                    let contractSpecs = futureContractsJson.value.filter(item => item.symbol == temp.Symbol)
+                    let contractSpecs = futureContractsJson.value.filter(item => temp.Symbol.startsWith(item.symbol))
                     //console.log(" -> contractSpecs " + JSON.stringify(contractSpecs))
                     if (contractSpecs.length == 0) {
                         reject("Missing information for future symbol " + temp.Symbol)
