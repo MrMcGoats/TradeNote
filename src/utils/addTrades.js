@@ -66,12 +66,16 @@ export async function useGetExistingTradesArray(param99, param0) {
             const results = await query.find(param99 === "api" ? { useMasterKey: true } : "");
             for (let i = 0; i < results.length; i++) {
                 const object = results[i];
-                //console.log("unix time "+ object.get('dateUnix'));
-                existingTradesArray.push(object.get('dateUnix'))
+                const dateUnix = object.get('dateUnix');
+                const trades = object.get('trades') || [];
+                // Extract unique accounts for this dateUnix
+                const accounts = [...new Set(trades.map(trade => trade.account))];
+                accounts.forEach(account => {
+                    existingTradesArray.push({ dateUnix, account });
+                });
             }
             gotExistingTradesArray.value = true
             console.log(" -> Finished getting existing trades for filter")
-            //console.log(" -> ExistingTradesArray " + JSON.stringify(existingTradesArray))
             resolve()
         } catch (error) {
             throw new Error('Error useGetExistingTradesArray ' + error);
@@ -1515,43 +1519,48 @@ export const useUpdateMfePrices = async(param99, param0, param2) => {
 async function filterExisting(param) {
     return new Promise(async (resolve, reject) => {
         console.log("\nFILTERING EXISTING")
-        //spinnerLoadingPageText.value = "Filtering existing"
-        // We can only filter at this point.value because trades depend on executions. So, once trades are created, we can filter out existing trades
-
-        //await getExistingTradesArray.value(param) => Here, I no longer call it here but on page load, so it's quicker to load
-
-        //console.log("existing array "+JSON.stringify(existingTradesArray)+" and count "+existingTradesArray.length)
-        /* I have to rename and make specific caser for existingTradesArray => existingCashJournalsArray
-        
-        if (param == "cashJournals") {
-            existingTradesArray.forEach(element => {
-                if (cashJournals.value.hasOwnProperty(element)) {
-                    console.log("date exists " + element)
-                    existingImports.push(element)
-                }
-            });
-            cashJournals.value = _.omit(cashJournals.value, existingTradesArray)
-            console.log("cashJournal " + JSON.stringify(cashJournals.value))
-        } */
-
         if (param == "trades") {
-            //console.log(" -> ExistingTradesArray "+existingTradesArray)
-            existingTradesArray.forEach(element => {
-                //console.log("element "+element)
-                if (executions.hasOwnProperty(element)) {
-                    console.log(" -> Already imported date " + element)
-                    existingImports.push(element)
+            const executionKeys = Object.keys(executions);
+            for (const dateUnix of executionKeys) {
+                // Get unique accounts for this dateUnix in existingTradesArray
+                const existingAccounts = existingTradesArray
+                    .filter(item => item.dateUnix == dateUnix)
+                    .map(item => item.account);
+
+                if (existingAccounts.length > 0) {
+                    console.log(` -> Checking date ${dateUnix} for existing accounts: ${existingAccounts.join(', ')}`);
+                    // Filter executions for this dateUnix
+                    executions[dateUnix] = executions[dateUnix].filter(exec => {
+                        if (existingAccounts.includes(exec.account)) {
+                            console.log(` -> Already imported date ${dateUnix} for account ${exec.account}`);
+                            // Add to existingImports only once per dateUnix
+                            if (!existingImports.includes(dateUnix)) {
+                                existingImports.push(dateUnix);
+                            }
+                            return false; // Exclude this execution
+                        }
+                        return true; // Keep this execution
+                    });
+
+                    // Filter trades for this dateUnix
+                    if (trades[dateUnix]) {
+                        trades[dateUnix] = trades[dateUnix].filter(trade => {
+                            if (existingAccounts.includes(trade.account)) {
+                                return false; // Exclude this trade
+                            }
+                            return true; // Keep this trade
+                        });
+                    }
+
+                    // Remove dateUnix from executions and trades if no entries remain
+                    if (executions[dateUnix].length === 0) {
+                        delete executions[dateUnix];
+                    }
+                    if (trades[dateUnix] && trades[dateUnix].length === 0) {
+                        delete trades[dateUnix];
+                    }
                 }
-            });
-
-            let tempExecutions = _.omit(executions, existingTradesArray)
-            for (let key in executions) delete executions[key]
-            Object.assign(executions, tempExecutions)
-            //console.log(" -> executions "+JSON.stringify(executions))
-
-            let tempTrades = _.omit(trades, existingTradesArray)
-            for (let key in trades) delete trades[key]
-            Object.assign(trades, tempTrades)
+            }
         }
         resolve()
     })
