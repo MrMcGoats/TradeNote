@@ -2086,10 +2086,10 @@ export async function useUploadTrades(param99, param0) {
     const checkTradeAccounts = async () => {
         return new Promise(async (resolve, reject) => {
             const updateTradeAccounts = async (param, param2) => {
-                let parseObject
-                let query
+                let parseObject;
+                let query;
                 if (param99 === "api") {
-                    let ParseNode = param0
+                    let ParseNode = param0;
                     parseObject = ParseNode.Object.extend("_User");
                     query = new ParseNode.Query(parseObject);
                 } else {
@@ -2099,65 +2099,59 @@ export async function useUploadTrades(param99, param0) {
 
                 query.equalTo("objectId", currentUser.value.objectId);
                 const results = await query.first(param99 === "api" ? { useMasterKey: true } : undefined);
-                //console.log(" results "+JSON.stringify(results))
                 if (results) {
-                    results.set("accounts", param)
-                    //console.log("param 2" + JSON.stringify(param2))
+                    results.set("accounts", param);
                     if (param99 === "api") {
-                        await results.save(null, { useMasterKey: true }) //very important to have await or else too quick to update
+                        await results.save(null, { useMasterKey: true });
                     } else {
-                        await results.save()
+                        await results.save();
 
-                        //console.log("current accounts " + JSON.stringify(currentUser.value.accounts))
-
-                        let selectedItems = "selectedAccounts"
-
-                        let selectedItemsArray = []
+                        let selectedItems = "selectedAccounts";
+                        let selectedItemsArray = [];
                         if (localStorage.getItem(selectedItems)) {
                             if (localStorage.getItem(selectedItems).includes(",")) {
-                                selectedItemsArray = localStorage.getItem(selectedItems).split(",")
+                                selectedItemsArray = localStorage.getItem(selectedItems).split(",");
                             } else {
-                                selectedItemsArray = []
-                                selectedItemsArray.push(localStorage.getItem(selectedItems))
+                                selectedItemsArray.push(localStorage.getItem(selectedItems));
                             }
-                        } else {
-                            selectedItemsArray = []
                         }
-                        //console.log(" selected items value " + JSON.stringify(selectedItemsArray))
-                        selectedItemsArray.push(param2)
-                        localStorage.setItem(selectedItems, selectedItemsArray)
-                        //console.log(" -> Updated selectedItems / localstorage " + selectedItemsArray)
+                        if (!selectedItemsArray.includes(param2)) {
+                            selectedItemsArray.push(param2);
+                        }
+                        localStorage.setItem(selectedItems, selectedItemsArray);
                     }
+                    resolve();
                 } else {
-                    alert("Update query did not return any results")
+                    alert("Update query did not return any results");
+                    reject(new Error("Update query did not return any results"));
                 }
-            }
+            };
 
-            if (currentUser.value.accounts) {
+            try {
+                let tempArray = currentUser.value.accounts ? [...currentUser.value.accounts] : [];
+                let newAccounts = [];
+
+                // Collect all new accounts
                 tradeAccounts.forEach(element => {
-                    let check = currentUser.value.accounts.find(x => x.value == element)
-                    //console.log("check "+JSON.stringify(check))
-                    if (!check) {
-                        let tempArray = currentUser.value.accounts
-                        let temp = {}
-                        temp.value = tradeAccounts[0]
-                        temp.label = tradeAccounts[0]
-                        tempArray.push(temp)
-                        updateTradeAccounts(tempArray, temp.value)
+                    if (!tempArray.find(x => x.value === element)) {
+                        let temp = { value: element, label: element };
+                        tempArray.push(temp);
+                        newAccounts.push(element);
                     }
                 });
-            } else {
-                let tempArray = []
-                tradeAccounts.forEach(element => {
-                    let temp = {}
-                    temp.value = element
-                    temp.label = element
-                    tempArray.push(temp)
-                    updateTradeAccounts(tempArray, temp.value)
-                })
+
+                // Perform a single update if there are new accounts
+                if (newAccounts.length > 0) {
+                    await updateTradeAccounts(tempArray, newAccounts[newAccounts.length - 1]);
+                } else {
+                    resolve();
+                }
+            } catch (error) {
+                console.error("Error in checkTradeAccounts:", error);
+                reject(error);
             }
-        })
-    }
+        });
+    };
 
     const updateOpenPositions = async (param1, param2, param3) => {
         //console.log(" -> Upload function for "+param)
