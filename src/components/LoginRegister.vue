@@ -42,37 +42,38 @@ async function login() {
 }
 
 async function register() {
- if (!registerOff) {
-    console.log("\nREGISTER");
-    signingUp.value = true;
-    if (!localStorage.getItem('parse_app_id')) {
-      alert("Missing App ID. Please make sure you entered correct App ID during runtime.");
-      return;
-    }
-    let updateSchemaFunction = await updateSchema();
-    console.log(" -> Update Schema status " + updateSchemaFunction.status);
-    if (updateSchemaFunction.status == 200) {
-      const user = new Parse.User();
-      user.set("username", loginForm.username);
-      user.set("password", loginForm.password);
-      user.set("email", loginForm.username);
-      user.set("timeZone", loginForm.timeZone);
-      try {
-        await user.signUp();
-        useGetCurrentUser();
-        useGetTimeZone();
-        await useGetPeriods();
-        await useSetValues();
-        console.log("Hooray! Let them use the app now");
-        window.location.replace("/dashboard");
-      } catch (error) {
-        alert("Error: " + error.code + " " + error.message);
-      }
-    } else {
-      signingUp.value = false;
-      alert("Error updating schema " + updateSchema);
-    }
-  }
+ const response = await axios.post('/api/registerPage');
+ if (!response.data.startsWith("true")) {
+     console.log("\nREGISTER");
+     signingUp.value = true;
+     if (!localStorage.getItem('parse_app_id')) {
+       alert("Missing App ID. Please make sure you entered correct App ID during runtime.");
+       return;
+     }
+     let updateSchemaFunction = await updateSchema();
+     console.log(" -> Update Schema status " + updateSchemaFunction.status);
+     if (updateSchemaFunction.status == 200) {
+       const user = new Parse.User();
+       user.set("username", loginForm.username);
+       user.set("password", loginForm.password);
+       user.set("email", loginForm.username);
+       user.set("timeZone", loginForm.timeZone);
+       try {
+         await user.signUp();
+         useGetCurrentUser();
+         useGetTimeZone();
+         await useGetPeriods();
+         await useSetValues();
+         console.log("Hooray! Let them use the app now");
+         window.location.replace("/dashboard");
+       } catch (error) {
+         alert("Error: " + error.code + " " + error.message);
+       }
+     } else {
+       signingUp.value = false;
+       alert("Error updating schema " + updateSchema);
+     }
+   }
 }
 
 async function updateSchema() {
@@ -384,7 +385,7 @@ const checkLegacy = async () => {
 
 <template>
   <main class="container" id="registerSignup">
-    <div v-if="pageId === 'register' && registerOff === true">
+    <div v-if="pageId === 'register' && registerOff == true">
       <h1>404 - Page Not Found</h1>
       <p>The registration page is currently disabled.</p>
     </div>
