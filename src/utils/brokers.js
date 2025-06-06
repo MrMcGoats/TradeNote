@@ -1042,86 +1042,168 @@ export async function useNinjaTrader(param) {
             let currentPosition = {}
             let newData = {data: []}
             papaParse.data.forEach(element => {
-                if (!element.Instrument) return
+                if (!element.Instrument || !element.Account) return;
 
                 // Initialize position tracking
                 if (!currentPosition[element.Account]) {
-                    currentPosition[element.Account] = {}
+                    currentPosition[element.Account] = {};
                 }
                 if (!currentPosition[element.Account][element.Instrument]) {
-                    currentPosition[element.Account][element.Instrument] = 0
+                    currentPosition[element.Account][element.Instrument] = { qty: 0, side: 0 };
                 }
 
-                let newElement = { ...element }
+                let newElement = { ...element };
+                let totalQty = parseInt(element.Quantity, 10) || 0;
+                let lastPosition = currentPosition[element.Account][element.Instrument];
+                let lastQty = lastPosition.qty;
+                let lastSide = lastPosition.side; // 1: Long, -1: Short, 0: Flat
+
+                // Parse Position field
+                let newQty = 0;
+                let newSide = 0; // 1: Long, -1: Short, 0: Flat
+                if (element.Position && element.Position.trim() !== "" && element.Position.trim() !== "-") {
+                    let positionParts = element.Position.trim().split(/\s+/);
+                    if (positionParts.length >= 1) {
+                        newQty = parseInt(positionParts[0], 10) || 0;
+                        newSide = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0;
+                        if (!newSide && positionParts[0] !== "0") {
+                            console.warn(`Warning: Invalid Position format "${element.Position}" for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                        }
+                    } else {
+                        console.warn(`Warning: Malformed Position "${element.Position}" for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                    }
+                } else if (element.Position === "-") {
+                    newQty = 0;
+                    newSide = 0;
+                } else {
+                    console.warn(`Warning: Empty Position for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                }
 
                 if (element["E/X"] === "Entry/Exit") {
-                    // Parse position
-                    let positionParts = element.Position ? element.Position.split(" ") : ["0", "L"]
-                    let qty = Number(positionParts[0]) || 0
-                    let side = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0
-                    let newPosition = qty * side;
-                    let lastPosition = currentPosition[element.Account][element.Instrument]
+                    // Calculate position delta
+                    let targetPosition = newQty * newSide;
+                    let currentPositionQty = lastQty * lastSide;
+                    let delta = targetPosition - currentPositionQty;
 
-                    // Calculate quantities for closing and opening positions
-                    let closeQty = 0
-                    let openQty = 0
+                    let closeQty = 0;
+                    let openQty = 0;
+                    let closeAction = "";
+                    let openAction = element.Action;
 
-                    if (lastPosition > 0 && newPosition >= 0) {
-                        // Long to long or flat
-                        closeQty = Math.min(lastPosition, newPosition)
-                        openQty = newPosition - closeQty
-                    } else if (lastPosition < 0 && newPosition <= 0) {
-                        // Short to short or flat
-                        closeQty = Math.min(Math.abs(lastPosition), Math.abs(newPosition))
-                        openQty = Math.abs(newPosition) - closeQty
-                    } else if (lastPosition > 0 && newPosition < 0) {
-                        // Long to short
-                        closeQty = lastPosition
-                        openQty = Math.abs(newPosition)
-                    } else if (lastPosition < 0 && newPosition > 0) {
-                        // Short to long
-                        closeQty = Math.abs(lastPosition)
-                        openQty = newPosition
-                    } else if (lastPosition === 0) {
-                        // Flat to any position
-                        openQty = Math.abs(newPosition)
+                    // Determine closeQty and openQty
+                    if (currentPositionQty > 0) {
+                        // Existing long position
+                        if (delta < 0) {
+                            // Reducing long or reversing to short
+                            closeQty = Math.min(lastQty, Math.abs(delta));
+                            closeAction = "Sell";
+                            if (Math.abs(delta) > lastQty) {
+                                openQty = Math.abs(delta) - lastQty;
+                            }
+                        } else if (delta > 0) {
+                            // Increasing long
+                            openQty = delta;
+                        } else {
+                            // Closing long
+                            closeQty = Math.min(totalQty, lastQty);
+                            closeAction = "Sell";
+                        }
+                    } else if (currentPositionQty < 0) {
+                        // Existing short position
+                        if (delta > 0) {
+                            // Reducing short or reversing to long
+                            closeQty = Math.min(lastQty, delta);
+                            closeAction = "Buy";
+                            if (delta > lastQty) {
+                                openQty = delta - lastQty;
+                            }
+                        } else if (delta < 0) {
+                            // Increasing short
+                            openQty = Math.abs(delta);
+                        } else {
+                            // Closing short
+                            closeQty = Math.min(totalQty, lastQty);
+                            closeAction = "Buy";
+                        }
+                    } else {
+                        // Flat position
+                        openQty = Math.abs(delta);
                     }
 
-                    let totalQty = Number(element.Quantity) || 0
-                    let perUnitCommission = totalQty > 0 ? Number(element.Commission.split("$")[1]) / totalQty : 0
+                    // Validate total quantity
+                    let requiredQty = closeQty + openQty;
+                    if (requiredQty !== totalQty && totalQty !== 0) {
+                        console.warn(`Warning: Quantity mismatch for ${element.Instrument} in account ${element.Account}. Expected ${requiredQty}, got ${totalQty}. Adjusting.`);
+                        if (closeQty > 0) {
+                            closeQty = Math.min(closeQty, totalQty, lastQty);
+                            openQty = totalQty - closeQty;
+                        } else {
+                            openQty = totalQty;
+                        }
+                    }
+
+                    // Calculate commission
+                    let totalCommission = element.Commission && element.Commission.includes("$") ? parseFloat(element.Commission.replace("$", "")) : 0;
+                    let perUnitCommission = totalQty > 0 ? totalCommission / totalQty : 0;
 
                     // Create Exit transaction if needed
                     if (closeQty > 0) {
-                        let exitElement = { ...newElement }
-                        exitElement.Quantity = closeQty.toString()
-                        exitElement.Commission = "$" + (closeQty * perUnitCommission).toFixed(2)
-                        exitElement["E/X"] = "Exit"
-                        newData.data.push(exitElement)
+                        let exitElement = { ...newElement };
+                        exitElement.Quantity = closeQty.toString();
+                        exitElement.Commission = "$" + (closeQty * perUnitCommission).toFixed(2);
+                        exitElement["E/X"] = "Exit";
+                        exitElement.Action = closeAction;
+                        newData.data.push(exitElement);
                     }
 
                     // Create Entry transaction if needed
                     if (openQty > 0) {
-                        newElement.Quantity = openQty.toString()
-                        newElement.Commission = "$" + (openQty * perUnitCommission).toFixed(2)
-                        newElement["E/X"] = "Entry"
-                        newData.data.push(newElement)
-                    } else if (closeQty === 0) {
-                        // If no closing, just push the original as Entry
-                        newElement["E/X"] = "Entry"
-                        newData.data.push(newElement)
+                        newElement.Quantity = openQty.toString();
+                        newElement.Commission = "$" + (openQty * perUnitCommission).toFixed(2);
+                        newElement["E/X"] = "Entry";
+                        newData.data.push(newElement);
                     }
 
                     // Update position
-                    currentPosition[element.Account][element.Instrument] = newPosition
+                    currentPosition[element.Account][element.Instrument] = { qty: newQty, side: newSide };
                 } else {
                     // Non-Entry/Exit orders
-                    let positionParts = element.Position ? element.Position.split(" ") : ["0", "L"]
-                    let qty = Number(positionParts[0]) || 0
-                    let side = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0
-                    currentPosition[element.Account][element.Instrument] = qty * side
-                    newData.data.push(newElement)
+                    if (element["E/X"] === "Entry") {
+                        let qtyChange = totalQty;
+                        if (element.Action === "Buy") {
+                            if (lastSide <= 0) {
+                                currentPosition[element.Account][element.Instrument] = { qty: qtyChange, side: 1 };
+                            } else {
+                                currentPosition[element.Account][element.Instrument].qty += qtyChange;
+                            }
+                        } else if (element.Action === "Sell") {
+                            if (lastSide >= 0) {
+                                currentPosition[element.Account][element.Instrument] = { qty: qtyChange, side: -1 };
+                            } else {
+                                currentPosition[element.Account][element.Instrument].qty += qtyChange;
+                            }
+                        }
+                    } else if (element["E/X"] === "Exit") {
+                        let qtyChange = totalQty;
+                        if (element.Action === "Buy") {
+                            if (lastSide < 0) {
+                                let newQty = Math.max(0, lastQty - qtyChange);
+                                currentPosition[element.Account][element.Instrument] = { qty: newQty, side: newQty === 0 ? 0 : -1 };
+                            }
+                        } else if (element.Action === "Sell") {
+                            if (lastSide > 0) {
+                                let newQty = Math.max(0, lastQty - qtyChange);
+                                currentPosition[element.Account][element.Instrument] = { qty: newQty, side: newQty === 0 ? 0 : 1 };
+                            }
+                        }
+                        if (element.Position === "-" || newQty === 0) {
+                            currentPosition[element.Account][element.Instrument] = { qty: 0, side: 0 };
+                        }
+                    }
+
+                    newData.data.push(newElement);
                 }
-            })
+            });
 
             papaParse = newData
 
