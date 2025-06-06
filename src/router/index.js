@@ -182,26 +182,6 @@ const router = createRouter({
         },
         component: () =>
             import('../views/Imports.vue')
-    },
-    {
-        path: '/checkout',
-        name: 'checkout',
-        meta: {
-            title: "Checkout",
-            layout: DashboardLayout
-        },
-        component: () =>
-            import('../views/Checkout.vue')
-    },
-    {
-        path: '/checkoutSuccess',
-        name: 'checkoutSuccess',
-        meta: {
-            title: "Checkout Success",
-            layout: DashboardLayout
-        },
-        component: () =>
-            import('../views/CheckoutSuccess.vue')
     }
     ]
 })

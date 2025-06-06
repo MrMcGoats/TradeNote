@@ -11,23 +11,6 @@ import Proxy from 'http-proxy'
 import { useImportTrades, useGetExistingTradesArray, useUploadTrades } from './src/utils/addTrades.js';
 import { currentUser, uploadMfePrices } from './src/stores/globals.js';
 import { useGetTimeZone } from './src/utils/utils.js';
-import Stripe from 'stripe';
-
-
-/* STRIPE VAR */
-let stripeSk //secret key
-let stripePk // public key
-let stripePriceId
-let stripeTrialPeriod
-
-if (process.env.STRIPE_SK) {
-    stripeSk = new Stripe(process.env.STRIPE_SK);
-    stripePk = process.env.STRIPE_PK
-    stripePriceId = process.env.STRIPE_PRICE_ID
-    stripeTrialPeriod = process.env.STRIPE_TRIAL_PERIOD
-}
-
-/* END STRIPE */
 
 let databaseURI
 

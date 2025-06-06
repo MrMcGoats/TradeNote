@@ -103,16 +103,6 @@ const pages = [{
     id: "imports",
     name: "Imports",
     icon: "uil uil-import"
-},
-{
-    id: "checkout",
-    name: "Checkout",
-    icon: "uil uil-shopping-cart"
-},
-{
-    id: "checkoutSuccess",
-    name: "Checkout Success",
-    icon: "uil uil-shopping-cart"
 }
 ]
 //console.log(" user "+useCheckCurrentUser())
@@ -169,16 +159,7 @@ function getLatestVersion() {
 }
 
 const navAdd = async (param) => {
-    await useGetCurrentUser();
-    try {
-        await useCheckCloudPayment(currentUser.value);
-        // Redirect only if no error occurs
-        window.location.href = "/" + param;
-    } catch (error) {
-        //console.log("-> useCheckCloudPayment error: " + error);
-        // Redirect to checkout page on error
-        window.location.href = "/checkout";
-    }
+    window.location.href = "/" + param;
 };
 
 
