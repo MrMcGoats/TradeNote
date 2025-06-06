@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeMount, onMounted } from 'vue';
-import { useInitParse, useInitPostHog, usePageId } from '../utils/utils.js'
+import { useInitParse, usePageId } from '../utils/utils.js'
 
 import axios from 'axios'
 
@@ -12,8 +12,6 @@ onBeforeMount(async() =>{
 onMounted(async() => {
   
 })
-
-useInitPostHog()
 
 async function getParseId() {
   return new Promise((resolve, reject) => {
