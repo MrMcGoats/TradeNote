@@ -2,7 +2,19 @@
 <p style='font-size:2.5em;' align="center">TradeNote</p>
 <p style='font-size:16px;' align="center" style='margin-bottom:30px'>- Open Source Trading Journal -</p>
 
-<p align="center"><a href="https://tradenote.co">🌐 Website</a> | <a href="https://tradenote.co/project-overview.html">📚 Documentation</a> |  <a href="https://discord.gg/ZbHekKYb85"><img src="https://f003.backblazeb2.com/file/7ak-public/tradenote/discord-icon.svg" width="12" height="12"/> Discord</a><p>
+<p align="center"><a href="https://tradenote.co">🌐 Website</a> | <a href="https://tradenote.co/project-overview.html">📚 Documentation</a><p>
+<br />
+
+# How is this fork different?
+
+- NinjaTrader imports actually work (I'm not sure why the original dev didn't fix this, but it was completely wrong and he refused to merge my fix)
+- Fixed many obvious and breaking bugs
+- Can import trades that happened on the same day, so long as they're from different accounts
+- No Stripe
+- No tracking
+- Setting `REGISTER_OFF=true` now actually disables the registration page, instead of just hinding the link (it may still be possible to register through manual requests to the server. I need to look in to it further)
+
+<br />
 <br />
 
 There are numerous great and very powerful trading journals out there. However, I wanted to build a journal for traders who care about data security and privacy but also for individuals that need simplicity and flexibility.
