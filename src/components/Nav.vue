@@ -107,7 +107,6 @@ const pages = [{
 ]
 //console.log(" user "+useCheckCurrentUser())
 onMounted(async () => {
-    await getLatestVersion()
     await useInitTooltip()
 })
 
@@ -119,43 +118,6 @@ function logout() {
         console.log("Logging out")
         window.location.replace("/");
     });
-}
-
-function getLatestVersion() {
-    return new Promise(async (resolve, reject) => {
-        await axios.get("/api/dockerVersion")
-    .then((response) => {
-        //console.log(" -> data " + JSON.stringify(response.data));
-        for (const element of response.data.results) { // Use for...of for iteration
-            console.log("name " + element.name);
-            if (element.name !== "latest") {
-                latestVersion.value.docker = element.name;
-                break; // Stop iterating after the first match
-            }
-        }
-    })
-    .catch((error) => {
-        console.error("Error: ", error);
-    })
-    .finally(function () {
-        // Always executed
-    });
-        
-        await axios.get("https://raw.githubusercontent.com/Eleven-Trading/TradeNote/main/package.json")
-            .then((response) => {
-                //console.log(" -> data " + JSON.stringify(response.data))
-                latestVersion.value.gitHub = response.data.version
-                
-            })
-            .catch((error) => {
-            })
-            .finally(function () {
-                // always executed
-            })
-
-            console.log(" -> Latest versions " + JSON.stringify(latestVersion.value))
-        resolve()
-    })
 }
 
 const navAdd = async (param) => {
