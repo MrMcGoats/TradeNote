@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeMount, onMounted } from 'vue';
 import { selectedBroker, spinnerLoadingPage, brokers, stepper, executions, currentUser, uploadMfePrices, existingImports, queryLimit, blotter, pAndL, gotExistingTradesArray, existingTradesArray, brokerData, tradovateTiers, selectedTradovateTier } from '../stores/globals';
-import { useCheckCloudPayment, useDecimalsArithmetic } from '../utils/utils';
+import { useDecimalsArithmetic } from '../utils/utils';
 import { useImportTrades, useUploadTrades, useGetExistingTradesArray } from '../utils/addTrades'
 import { useCreatedDateFormat, useDateCalFormat, useGetCurrentUser } from '../utils/utils';
 import SpinnerLoadingPage from '../components/SpinnerLoadingPage.vue';

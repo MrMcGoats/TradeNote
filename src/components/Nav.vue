@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted } from 'vue';
-import { useCheckCloudPayment, useGetCurrentUser, useToggleMobileMenu } from '../utils/utils.js'
+import { useGetCurrentUser, useToggleMobileMenu } from '../utils/utils.js'
 import { useInitShepherd, useInitTooltip } from "../utils/utils.js";
 import { pageId, currentUser, renderProfile, screenType, latestVersion } from "../stores/globals"
 import { version } from '../../package.json';
