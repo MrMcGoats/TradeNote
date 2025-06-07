@@ -89,7 +89,7 @@ function inputChooseBroker(param) {
                         </thead>
                         <tbody>
                             <tr v-for="(data, index)  in imports">
-                                <td>{{ useDateCalFormat(data.dateUnix) }}</td>
+                                <td>{{ useDateCalFormat(data.dateUnix) }} ({{ Array.from(new Set(data.trades.map(a => a.account))).join(",") }})</td>
                                 <td class="text-end">
                                     <i :id="data.dateUnix" v-on:click="selectedItem = data.dateUnix"
                                         class="ps-2 uil uil-trash-alt popoverDelete pointerClass" data-bs-html="true"

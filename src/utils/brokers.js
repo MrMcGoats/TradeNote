@@ -1037,9 +1037,8 @@ export async function useNinjaTrader(param) {
             //we need to recreate the JSON with proper date format + we simplify
             //console.log("papaparse " + JSON.stringify(papaParse.data))
             
-            // Sort data by date (formated as YYYY-MM-DD HH:mm:ss)
-            papaParse.data.sort((a, b) => dayjs(a["Time"], "YYYY-MM-DD HH:mm:ss") - dayjs(b["Time"], "YYYY-MM-DD HH:mm:ss"));
-
+            // Sort data by date (formated as YYYY-MM-DD HH:mm:ss), and group by account
+            papaParse.data.sort((a, b) => dayjs(a["Date/Time"], "YYYY-MM-DD HH:mm:ss") - dayjs(b["Date/Time"], "YYYY-MM-DD HH:mm:ss"));
             
             // Track the current position for each account/symbol combination
             // We will use this for the "Entry/Exit" orders
