@@ -1039,12 +1039,44 @@ export async function useNinjaTrader(param) {
             
             // Sort data by date (formated as YYYY-MM-DD HH:mm:ss), and group by account
             papaParse.data.sort((a, b) => dayjs(a["Date/Time"], "YYYY-MM-DD HH:mm:ss") - dayjs(b["Date/Time"], "YYYY-MM-DD HH:mm:ss"));
-            
+
+            // Combine orders with the same order ID, so long as they are in the same account, and have compatible 'E/X' ('Entry/Exit' goes with anything, 'Entry' goes with other 'Entry', and 'Exit' goes with other 'Exit')
+            let groupedData = [];
+            papaParse.data.forEach(element => {
+                if (!element.Account || !element["Order ID"] || !element["E/X"]) return;
+                console.warn(`Processing order ID ${element["Order ID"]} from account ${element.Account} with E/X ${element["E/X"]}.`); 
+
+                // Check if an element with a compatible 'E/X' already exists in groupedData
+                let existingIndex = groupedData.findIndex(item => 
+                    item.Account === element.Account && 
+                    item["Order ID"] === element["Order ID"] && 
+                    item.Action === element.Action &&
+                    item.Instrument === element.Instrument &&
+                    item.Time === element.Time &&
+                    item.Name === element.Name &&
+                    item.Position.split(" ")[1] === element.Position.split(" ")[1] &&
+                    (item["E/X"] === "Entry/Exit" || element["E/X"] === "Entry/Exit")
+                );
+
+                if (existingIndex !== -1) {
+                    // If a compatible element exists, merge the current element into it
+                    let existingElement = groupedData[existingIndex];
+                    existingElement.Quantity = (parseInt(existingElement.Quantity, 10) + parseInt(element.Quantity, 10)).toString();
+                    existingElement.Commission = "$" + (parseFloat(existingElement.Commission.replace("$", "")) + parseFloat(element.Commission.replace("$", ""))).toFixed(2);
+                    existingElement["E/X"] = "Entry/Exit"; // Ensure the E/X is set to Entry/Exit for merged entries
+
+                    console.warn(`Successfully merged order ID ${element["Order ID"]} from account ${element.Account} with existing entry/exit. Action: ${existingElement.Action} Quantity: ${existingElement.Quantity}, Commission: ${existingElement.Commission}`);
+                } else {
+                    // If no compatible element exists, add the current element as a new entry
+                    groupedData.push({ ...element });
+                }
+            });
+
             // Track the current position for each account/symbol combination
             // We will use this for the "Entry/Exit" orders
             let currentPosition = {}
             let newData = {data: []}
-            papaParse.data.forEach(element => {
+            groupedData.forEach(element => {
                 if (!element.Instrument || !element.Account) return;
 
                 // Initialize position tracking
@@ -1070,16 +1102,16 @@ export async function useNinjaTrader(param) {
                         newQty = parseInt(positionParts[0], 10) || 0;
                         newSide = positionParts[1] === "L" ? 1 : positionParts[1] === "S" ? -1 : 0;
                         if (!newSide && positionParts[0] !== "0") {
-                            console.warn(`Warning: Invalid Position format "${element.Position}" for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                            reject(`Invalid Position format "${element.Position}" for ${element.Instrument} in account ${element.Account}.`);
                         }
                     } else {
-                        console.warn(`Warning: Malformed Position "${element.Position}" for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                        reject(`Malformed Position "${element.Position}" for ${element.Instrument} in account ${element.Account}.`);
                     }
                 } else if (element.Position === "-") {
                     newQty = 0;
                     newSide = 0;
                 } else {
-                    console.warn(`Warning: Empty Position for ${element.Instrument} in account ${element.Account}. Assuming flat.`);
+                    reject(`Empty Position for ${element.Instrument} in account ${element.Account}.`);
                 }
 
                 if (element["E/X"] === "Entry/Exit") {
