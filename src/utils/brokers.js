@@ -618,95 +618,205 @@ export async function useBrokerTradeStation(param) {
 /****************************
  * INTERACTIVE BROKERS
  ****************************/
+async function preprocessIntreactiveBrokers(param) {
+    // This function takes the raw CSV file from the Interactive Brokers export, and does the following:
+    // 1. Removes any empty lines
+    // 2. Splits in to seperate 'files' for each account
+    // 3. If 'UnderlyingSymbol' is empty for a given row, insert the value of 'Symbol' in that column
+    // 4. Sorts the trades in each account by date and time
+    // 5. Round prices to two decimal places
+    // TODO: add a close order for expired options and futures so they can be marked as closed
+
+    return new Promise(async (resolve, reject) => {
+        let splitFiles = [];
+        try {
+            console.log("  --> Preprocessing Interactive Brokers file...")
+
+            // 1. Remove empty lines
+            let lines = param.split('\n').filter(line => line.trim() !== '');
+
+            // 2. Split into separate 'files' for each account
+            // Any time we find the headers (whatever is on the first line), we split it in to a new 'file'
+            let currentFile = [];
+            lines.forEach((line, index) => {
+                if (index === 0 || line.startsWith("ClientAccountID")) {
+                    if (currentFile.length > 0) {
+                        splitFiles.push(currentFile);
+                    }
+                    currentFile = [line]; // Start a new file with the header
+                } else {
+                    currentFile.push(line);
+                }
+            });
+
+            if (currentFile.length > 0) {
+                splitFiles.push(currentFile); // Add the last file
+            }
+
+            splitFiles.forEach(file => {
+                let headers = file[0].split(",");
+                let underlyingSymbolIndex = headers.indexOf("UnderlyingSymbol");
+                let symbolIndex = headers.indexOf("Symbol");
+                let dateIndex = headers.indexOf("Date/Time");
+                let priceIndex = headers.indexOf("Price");
+                let quantityIndex = headers.indexOf("Quantity");
+                let netCashIndex = headers.indexOf("NetCash");
+                let commissionIndex = headers.indexOf("Commission");
+                let brokerCommissionIndex = headers.indexOf("BrokerExecutionCommission");
+                let proceedsIndex = headers.indexOf("Proceeds");
+
+                // Sort the trades in each account by date and time
+                file.sort((a, b) => {
+                    let dateA = dayjs(a.split(",")[dateIndex], "YYYYMMDD;HHmmss");
+                    let dateB = dayjs(b.split(",")[dateIndex], "YYYYMMDD;HHmmss");
+                    return dateA - dateB;
+                });
+
+                for (let i = 1; i < file.length; i++) {
+                    let row = file[i].split(",");
+
+                    // If 'UnderlyingSymbol' is empty for a given row, insert the value of 'Symbol' in that column
+                    if (row[underlyingSymbolIndex] === "") {
+                        row[underlyingSymbolIndex] = row[symbolIndex];
+                    }
+
+                    // Round prices to two decimal places
+                    if (row[priceIndex]) {
+                        row[priceIndex] = parseFloat(row[priceIndex]).toFixed(2);
+                    }
+                    if (row[quantityIndex]) {
+                        row[quantityIndex] = parseFloat(row[quantityIndex]).toFixed(2);
+                    }
+                    if (row[netCashIndex]) {
+                        row[netCashIndex] = parseFloat(row[netCashIndex]).toFixed(2);
+                    }
+                    if (row[commissionIndex]) {
+                        row[commissionIndex] = parseFloat(row[commissionIndex]).toFixed(2);
+                    }
+                    if (row[brokerCommissionIndex]) {
+                        row[brokerCommissionIndex] = parseFloat(row[brokerCommissionIndex]).toFixed(2);
+                    }
+                    if (row[proceedsIndex]) {
+                        row[proceedsIndex] = parseFloat(row[proceedsIndex]).toFixed(2);
+                    }
+
+                    file[i] = row.join(",");
+                }
+            });
+            
+            console.log("  --> Preprocessing complete. Number of accounts found: " + splitFiles.length);
+
+            // Covert the split files to a format that can be used by Papa.parse
+            splitFiles = splitFiles.map(file => {
+                return file.join("\n");
+            });
+
+            resolve(splitFiles);
+        } catch (error) {
+            console.log("  --> ERROR " + error)
+            reject(error)
+        }       
+    })
+}
+
 export async function useBrokerInteractiveBrokers(param, param2) {
     return new Promise(async (resolve, reject) => {
         try {
-            //console.log("param "+param)
-            let papaParse = Papa.parse(param, { header: true })
+            preprocessIntreactiveBrokers(param).then(async (splitFiles) => {
+                splitFiles.forEach(file => {
+//console.log("param "+param)
+                    let papaParse = Papa.parse(file, { header: true })
 
-            papaParse.data.sort((a, b) => dayjs(a["Date/Time"], "YYYYMMDD;HHmmss") - dayjs(b["Date/Time"], "YYYYMMDD;HHmmss"))
+                    papaParse.data.sort((a, b) => dayjs(a["Date/Time"], "YYYYMMDD;HHmmss") - dayjs(b["Date/Time"], "YYYYMMDD;HHmmss"))
 
-            //we need to recreate the JSON with proper date format + we simplify
-            //console.log("papaparse " + JSON.stringify(papaParse.data))
-            papaParse.data.forEach(element => {
-                if (element.ClientAccountID && element.AssetClass != "CASH") {
-                    //console.log("element " + JSON.stringify(element))
-                    let temp = {}
-                    temp.Account = element.ClientAccountID
+                    //we need to recreate the JSON with proper date format + we simplify
+                    //console.log("papaparse " + JSON.stringify(papaParse.data))
+                    papaParse.data.forEach(element => {
+                        if (element.ClientAccountID && element.AssetClass != "CASH") {
+                            //console.log("element " + JSON.stringify(element))
+                            let temp = {}
+                            temp.Account = element.ClientAccountID
 
-                    let tempDate = element["Date/Time"].split(";")[0]
-                    let tempTime = element["Date/Time"].split(";")[1]
+                            let tempDate = element["Date/Time"].split(";")[0]
+                            let tempTime = element["Date/Time"].split(";")[1]
 
 
-                    //console.log("element.TradeDate. " + element.TradeDate)
-                    let tempYear = tempDate.slice(0, 4)
-                    let tempMonth = tempDate.slice(4, 6)
-                    let tempDay = tempDate.slice(6, 8)
-                    let newDate = tempMonth + "/" + tempDay + "/" + tempYear
+                            //console.log("element.TradeDate. " + element.TradeDate)
+                            let tempYear = tempDate.slice(0, 4)
+                            let tempMonth = tempDate.slice(4, 6)
+                            let tempDay = tempDate.slice(6, 8)
+                            let newDate = tempMonth + "/" + tempDay + "/" + tempYear
 
-                    temp["T/D"] = newDate
-                    temp["S/D"] = newDate
-                    temp.Currency = element.CurrencyPrimary
-                    //Type
-                    temp.Type = "stock"
-                    if (element.AssetClass == "FUT") {
-                        temp.Type = "future"
-                    }
-                    if (element.AssetClass == "OPT") {
-                        element["Put/Call"] == "C" ? temp.Type = "call" : temp.Type = "put"
-                    }
+                            temp["T/D"] = newDate
+                            temp["S/D"] = newDate
+                            temp.Currency = element.CurrencyPrimary
+                            //Type
+                            temp.Type = "stock"
+                            if (element.AssetClass == "FUT") {
+                                temp.Type = "future"
+                            }
+                            if (element.AssetClass == "OPT") {
+                                element["Put/Call"] == "C" ? temp.Type = "call" : temp.Type = "put"
+                            }
 
-                    //console.log("  --> Type " + temp.Type)
+                            //console.log("  --> Type " + temp.Type)
 
-                    if (element["Buy/Sell"] == "BUY" && (element["Code"].includes("O"))) {
-                        temp.Side = "B"
-                    }
-                    if (element["Buy/Sell"] == "BUY" && (element["Code"].includes("C"))) {
-                        temp.Side = "BC"
-                    }
-                    if (element["Buy/Sell"] == "SELL" && (element["Code"].includes("C"))) {
-                        temp.Side = "S"
-                    }
-                    if (element["Buy/Sell"] == "SELL" && (element["Code"].includes("O"))) {
-                        temp.Side = "SS"
-                    }
+                            if (element["Buy/Sell"] == "BUY" && (element["Code"].includes("O"))) {
+                                temp.Side = "B"
+                            }
+                            if (element["Buy/Sell"] == "BUY" && (element["Code"].includes("C"))) {
+                                temp.Side = "BC"
+                            }
+                            if (element["Buy/Sell"] == "SELL" && (element["Code"].includes("C"))) {
+                                temp.Side = "S"
+                            }
+                            if (element["Buy/Sell"] == "SELL" && (element["Code"].includes("O"))) {
+                                temp.Side = "SS"
+                            }
 
-                    temp.SymbolOriginal = element["Symbol"]
+                            temp.SymbolOriginal = element["Symbol"]
 
-                    if (temp.Type == "stock") {
-                        temp.Symbol = element["Symbol"]
-                    } else {
-                        temp.Symbol = element["UnderlyingSymbol"]
-                    }
+                            if (temp.Type == "stock") {
+                                temp.Symbol = element["Symbol"]
+                            } else {
+                                temp.Symbol = element["UnderlyingSymbol"]
+                            }
 
-                    temp.Qty = Number(element.Quantity) < 0 ? (-Number(element.Quantity)).toString() : element.Quantity
-                    temp.Price = element.Price
+                            temp.Qty = Number(element.Quantity) < 0 ? (-Number(element.Quantity)).toString() : element.Quantity
+                            temp.Price = element.Price
 
-                    let tempEntryHour = tempTime.slice(0, 2)
-                    let tempEntryMinutes = tempTime.slice(2, 4)
-                    let tempEntrySeconds = tempTime.slice(4, 6)
+                            let tempEntryHour = tempTime.slice(0, 2)
+                            let tempEntryMinutes = tempTime.slice(2, 4)
+                            let tempEntrySeconds = tempTime.slice(4, 6)
 
-                    temp["Exec Time"] = tempEntryHour + ":" + tempEntryMinutes + ":" + tempEntrySeconds
-                    
-                    let commNum = Number(element.Commission)
-                    temp.Comm = (-commNum).toString()
+                            temp["Exec Time"] = tempEntryHour + ":" + tempEntryMinutes + ":" + tempEntrySeconds
+                            
+                            let commNum = Number(element.Commission)
+                            temp.Comm = (-commNum).toString()
 
-                    temp.SEC = "0"
-                    temp.TAF = "0"
-                    temp.NSCC = "0"
-                    temp.Nasdaq = "0"
-                    temp["ECN Remove"] = "0"
-                    temp["ECN Add"] = "0"
-                    temp["Gross Proceeds"] = element.Proceeds
-                    temp["Net Proceeds"] = element.Proceeds - (-commNum) // I'm not using Net Cash because on same day or sometimes with normal input, Net Cash is not / still not calculated on IBKR side. So I calculate it myself
-                    temp["Clr Broker"] = ""
-                    temp.Liq = ""
-                    temp.Note = ""
-                    //console.log("temp "+JSON.stringify(temp))
-                    tradesData.push(temp)
-                }
-            });
-            //console.log(" -> Trades Data\n" + JSON.stringify(tradesData))
+                            temp.SEC = "0"
+                            temp.TAF = "0"
+                            temp.NSCC = "0"
+                            temp.Nasdaq = "0"
+                            temp["ECN Remove"] = "0"
+                            temp["ECN Add"] = "0"
+                            temp["Gross Proceeds"] = element.Proceeds
+                            temp["Net Proceeds"] = element.Proceeds - (-commNum) // I'm not using Net Cash because on same day or sometimes with normal input, Net Cash is not / still not calculated on IBKR side. So I calculate it myself
+                            temp["Clr Broker"] = ""
+                            temp.Liq = ""
+                            temp.Note = ""
+                            //console.log("temp "+JSON.stringify(temp))
+                            tradesData.push(temp)
+                        }
+                    });
+                    //console.log(" -> Trades Data\n" + JSON.stringify(tradesData))
+                })
+            }).catch(error => {
+                console.log("  --> ERROR in preprocessIntreactiveBrokers " + error)
+                reject(error)
+            })
+
+            
         } catch (error) {
             console.log("  --> ERROR " + error)
             reject(error)
